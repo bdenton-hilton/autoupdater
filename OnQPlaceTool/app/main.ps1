@@ -254,6 +254,7 @@ $null = $ps.BeginInvoke()
 # Setup
 $cred = $uiResult.AdmCred
 $localFolder = $uiResult.FolderToPlace
+$localFolder = $localFolder -replace '"',""
 $remoteRoot = $uiResult.TargetLocation
 $localFolderName = Split-Path $localFolder -Leaf
 
@@ -273,6 +274,8 @@ Remove-Item $zipPath -Force -ErrorAction Ignore
 
 # Zip entire local folder
 Add-Type -Assembly "System.IO.Compression.FileSystem"
+$localFolder
+$zipPath
 [IO.Compression.ZipFile]::CreateFromDirectory($localFolder, $zipPath)
 
 start-sleep -Milliseconds 200
