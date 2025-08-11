@@ -12,8 +12,6 @@ $upRootPath = Split-Path -path $PSScriptRoot -Parent
 $assetsPath = Join-Path -Path $upRootPath "Assets"
 $timestampFile = Join-Path -Path $assetsPath "NA Launcher Time Stamp.txt"
 
-Ensure-PathExists -path $assetsPath
-
 if (-not (Test-Path $timestampFile)) {
     New-Item -ItemType File -Path $timestampFile -Force | Out-Null
 }
@@ -23,7 +21,9 @@ $now = Get-Date
 # this will stop the script from running multiple times if the backups occur in quick succession (which they do)
 if (Test-Path $timestampFile) {
     $lastRun = Get-Content $timestampFile | Get-Date
-    if (($now - $lastRun).TotalMinutes -lt 5) {
+    $now.ToString() | Set-Content $timestampFile
+    try{$elapsed = ($now - $lastRun).TotalMinutes}catch{$elapsed = 0}
+    if ($elapsed -lt 5) {
         exit
     }
 }
@@ -130,5 +130,4 @@ foreach ($script in $scriptPaths) {
     Start-Process powershell.exe -ArgumentList "-ExecutionPolicy Bypass -File `"$script`"" -NoNewWindow
 
 }
-
 
