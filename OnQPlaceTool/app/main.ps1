@@ -283,6 +283,7 @@ $jobs = @()
 
 $failedConnections = 0
 foreach ($action in $uiResult.Actions) {
+    $action = $uiResult.Actions
     $server = $action.serverName
     $inncode = $action.inncode
     $createListener = $action.createListener
@@ -297,25 +298,21 @@ foreach ($action in $uiResult.Actions) {
     }
 
     $failedConnections = 0
-    try {
-        $session = New-PSSession -ComputerName $server -Credential $cred -errorAction Stop
-        $failedConnections = 0
-        $connection = $true
-    }
-    catch { 
-        $failedConnections = $failedConnections + 1 
-        $connection = $false
-        $ButtonType = [System.Windows.MessageBoxButton]::OK
-        $MessageIcon = [System.Windows.MessageBoxImage]::Error 
-        $MessageBody = "Failed to connect to $server. You have failed $failedConnections connection(s). After 3 subsequent failed connections the script will end."
-        $MessageTitle = "Failed connection"
-        $Result = [System.Windows.MessageBox]::Show($MessageBody, $MessageTitle, $ButtonType, $MessageIcon)
-    }
+
 
 
     if ($failedsubsequentConnections -lt 3) {
         $jobs += Start-Job -Name "$inncode" -ScriptBlock {
-            param($cred, $server, $remoteTarget, $zipPath, $localFolderName, $naFlagXml, $createListener, $localBlob, $session, $connection)
+            param($cred, $server, $remoteTarget, $zipPath, $localFolderName, $naFlagXml, $createListener, $localBlob)
+
+            try {
+                $session = New-PSSession -ComputerName $server -Credential $cred -errorAction Stop
+                $failedConnections = 0
+                $connection = $true
+            }
+            catch { 
+                $connection = $false
+            }
 
             if ($connection) {
                 $createListenerResult = Invoke-Command -Session $session -ScriptBlock {
@@ -412,7 +409,6 @@ foreach ($action in $uiResult.Actions) {
                     Get-DirectoryBlobTree -rootDirectory $remoteTarget
                 } -ArgumentList $remoteTarget
 
-
                 $transmit = $false
                 $transmitMessage = "File sync skipped. No files to update. "
 
@@ -491,8 +487,9 @@ foreach ($action in $uiResult.Actions) {
             }
     
             return $returnmessage
-        } -ArgumentList $cred, $server, $remoteTarget, $zipPath, $localFolderName, $naFlagXml, $createListener, $localBlob, $session, $connection
+        } -ArgumentList $cred, $server, $remoteTarget, $zipPath, $localFolderName, $naFlagXml, $createListener, $localBlob
 
+        $huh = receive-job $jobs 
         $script:sharedState.Value.dataTable["$inncode"] = @{
             Status = "Pending"
             Result = "Launched"
