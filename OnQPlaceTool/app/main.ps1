@@ -241,6 +241,10 @@ $ps.AddScript({
                 Write-DebugLine "JobPaused toggled: $($state.jobPaused)"
             })
 
+        $window.Add_Loaded({
+                $window.Topmost = $false
+            })
+
         $null = $window.ShowDialog()
         Write-DebugLine "Grid binding count: $($grid.Items.Count)"
 
@@ -298,7 +302,7 @@ foreach ($action in $uiResult.Actions) {
 
     $failedConnections = 0
     try {
-        $session = New-PSSession -ComputerName $server -Credential $cred -ErrorAction Stop
+        $session = New-PSSession -ComputerName $server -Credential $cred -ErrorAction Stop 2>$null
         $failedConnections = 0
         $connection = $true
     }
