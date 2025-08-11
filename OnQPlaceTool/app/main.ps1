@@ -302,7 +302,7 @@ foreach ($action in $uiResult.Actions) {
 
     $failedConnections = 0
     try {
-        $session = New-PSSession -ComputerName $server -Credential $cred -ErrorAction Stop 2>$null
+        $session = New-PSSession -ComputerName $server -Credential $cred -ErrorAction Stop
         $failedConnections = 0
         $connection = $true
     }
@@ -311,7 +311,7 @@ foreach ($action in $uiResult.Actions) {
         $connection = $false
         $ButtonType = [System.Windows.MessageBoxButton]::OK
         $MessageIcon = [System.Windows.MessageBoxImage]::Error 
-        $MessageBody = "Failed to connect to $server.`n`n$($_.Exception.Message)`n`nYou have failed $failedConnections connection(s). After 3 subsequent failed connections the script will end."
+        $MessageBody = "You have failed $failedConnections connection(s). After 3 subsequent failed connections the script will end."
         $MessageTitle = "Failed Connection"
         $Result = [System.Windows.MessageBox]::Show($MessageBody, $MessageTitle, $ButtonType, $MessageIcon)
         $session = $null
@@ -566,3 +566,4 @@ foreach ($job in $jobs) {
 
 
 Remove-Item $zipPath -Force -ErrorAction Ignore
+
