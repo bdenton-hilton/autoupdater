@@ -241,12 +241,12 @@ $ps.AddScript({
                 Write-DebugLine "JobPaused toggled: $($state.jobPaused)"
             })
 
+        $null = $window.ShowDialog()
+        Write-DebugLine "Grid binding count: $($grid.Items.Count)"
+
         $window.Add_Loaded({
                 $window.Topmost = $false
             })
-
-        $null = $window.ShowDialog()
-        Write-DebugLine "Grid binding count: $($grid.Items.Count)"
 
         $state.windowClosed = $true
     }) | Out-Null
@@ -566,4 +566,3 @@ foreach ($job in $jobs) {
 
 
 Remove-Item $zipPath -Force -ErrorAction Ignore
-
