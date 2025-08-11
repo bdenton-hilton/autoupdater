@@ -281,9 +281,8 @@ start-sleep -Milliseconds 200
 # Create jobs per device
 $jobs = @()
 
-$failedConnections = 0
 foreach ($action in $uiResult.Actions) {
-    $action = $uiResult.Actions
+
     $server = $action.serverName
     $inncode = $action.inncode
     $createListener = $action.createListener
@@ -297,203 +296,202 @@ foreach ($action in $uiResult.Actions) {
         Result = "Initializing"
     }
 
-    $failedConnections = 0
+    
+    $jobs += Start-Job -Name "$inncode" -ScriptBlock {
+        param($cred, $server, $remoteTarget, $zipPath, $localFolderName, $naFlagXml, $createListener, $localBlob)
 
+        try {
+            $session = New-PSSession -ComputerName $server -Credential $cred -errorAction Stop
+            $connection = $true
+        }
+        catch { 
+            $connection = $false
+        }
 
-
-    if ($failedsubsequentConnections -lt 3) {
-        $jobs += Start-Job -Name "$inncode" -ScriptBlock {
-            param($cred, $server, $remoteTarget, $zipPath, $localFolderName, $naFlagXml, $createListener, $localBlob)
-
-            try {
-                $session = New-PSSession -ComputerName $server -Credential $cred -errorAction Stop
-                $failedConnections = 0
-                $connection = $true
-            }
-            catch { 
-                $connection = $false
-            }
-
-            if ($connection) {
-                $createListenerResult = Invoke-Command -Session $session -ScriptBlock {
-                    param($dest, $createListener, $naFlagXml, $cred)
-                    if (-not (Test-Path -Path $dest -PathType Container)) {
-                        New-Item -ItemType Directory -Path $dest | Out-Null
+        if ($connection) {
+            $createListenerResult = Invoke-Command -Session $session -ScriptBlock {
+                param($dest, $createListener, $naFlagXml, $cred)
+                if (-not (Test-Path -Path $dest -PathType Container)) {
+                    New-Item -ItemType Directory -Path $dest | Out-Null
+                }
+                if ($createListener) {
+                    $taskName = "Post NA Migration Flag"
+                    if (Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue) {
+                        Unregister-ScheduledTask -TaskName $taskName -Confirm:$false
                     }
-                    if ($createListener) {
-                        $taskName = "Post NA Migration Flag"
-                        if (Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue) {
-                            Unregister-ScheduledTask -TaskName $taskName -Confirm:$false
-                        }
-                        $task = [xml]$naFlagXml
-                        $registeredTask = Register-ScheduledTask -Xml $task.OuterXml -TaskName $taskName -User $cred.UserName -Password $cred.GetNetworkCredential().Password
-                        $registeredTaskName = $registeredTask.TaskName
-                        $registeredTaskState = $registeredTask.State
-                        if ($registeredTaskState -eq 3) {
-                            return "Successfully Scheduled $registeredTaskName."
-                        }
-                        else {
-                            return "An error occured, the task may already be scheduled."
-                        }
+                    $task = [xml]$naFlagXml
+                    $registeredTask = Register-ScheduledTask -Xml $task.OuterXml -TaskName $taskName -User $cred.UserName -Password $cred.GetNetworkCredential().Password
+                    $registeredTaskName = $registeredTask.TaskName
+                    $registeredTaskState = $registeredTask.State
+                    if ($registeredTaskState -eq 3) {
+                        return "Successfully Scheduled $registeredTaskName."
                     }
                     else {
-                        return ""
-                    }
-                }-ArgumentList $remoteTarget, $createListener, $naFlagXml, $cred
-
-                # Validate remote zip path
-                if (-not $remoteTarget.EndsWith("\")) {
-                    $remoteTarget += "\"
-                }
-
-                $remoteBlob = Invoke-Command -Session $session -ScriptBlock {
-                    param($remoteTarget)
-                    function Get-DirectoryBlobTree {
-                        param (
-                            [string]$rootDirectory
-                        )
-
-                        if (-not (Test-Path $rootDirectory)) {
-                            return $null
-                        }
-
-                        $result = @()
-
-                        # Recursively get all files in the directory
-                        $files = Get-ChildItem -Path $rootDirectory -Recurse -File
-
-                        foreach ($file in $files) {
-                            $relativePath = $file.FullName.Substring($rootDirectory.Length).TrimStart('\')
-                            $blobSha1 = Compute-BlobSHA1 -filePath $file.FullName
-
-                            $result += [PSCustomObject]@{
-                                RelativePath = $relativePath
-                                BlobSHA1     = $blobSha1
-                            }
-                        }
-
-                        return $result
-                    }
-
-                    function Compute-BlobSHA1 {
-                        param (
-                            [string]$filePath
-                        )
-
-                        if (Test-Path $filePath) {
-                            # Read the file content
-                            $fileContent = [System.IO.File]::ReadAllBytes($filePath)
-
-                            # Create the blob header
-                            $blobHeader = [System.Text.Encoding]::UTF8.GetBytes("blob $($fileContent.Length)`0")
-
-                            # Combine the header and the file content
-                            $blobData = New-Object byte[] ($blobHeader.Length + $fileContent.Length)
-                            [System.Buffer]::BlockCopy($blobHeader, 0, $blobData, 0, $blobHeader.Length)
-                            [System.Buffer]::BlockCopy($fileContent, 0, $blobData, $blobHeader.Length, $fileContent.Length)
-
-                            # Compute the SHA-1 hash
-                            $sha1 = [System.Security.Cryptography.SHA1]::Create()
-                            $hashBytes = $sha1.ComputeHash($blobData)
-                            $sha1Hash = [BitConverter]::ToString($hashBytes) -replace '-', ''
-                            $sha1Hash = $sha1Hash.ToLower()
-                            return $sha1Hash
-                        }
-                        else {
-                            return "0"
-                        }
-
-                    }
-
-                    # Call the function with your desired path
-                    Get-DirectoryBlobTree -rootDirectory $remoteTarget
-                } -ArgumentList $remoteTarget
-
-                $transmit = $false
-                $transmitMessage = "File sync skipped. No files to update. "
-
-                if ($remoteBlob.Count -ge $localBlob.Count) {
-                    foreach ($blob in $localBlob) {
-                        if ($blob.BlobSHA1 -ne ($remoteBlob | Where-object { $_.RelativePath -eq $blob.RelativePath }).BlobSHA1) {
-                            $transmitMessage = "File sync completed. "
-                            $transmit = $true
-                            break
-                        }
+                        return "An error occured, the task may already be scheduled."
                     }
                 }
-
-                if ($transmit) {
-
-                    $remoteZip = $remoteTarget + "$localFolderName.zip"
-
-                    # Copy zip to remote
-                    Copy-Item -Path $zipPath -Destination $remoteZip -ToSession $session -Force
-
-                    # Unpack, compare, update
-                    Invoke-Command -Session $session -ScriptBlock {
-                        param($zip, $dest)
-
-                        $tempUnpack = "$env:TEMP\temp_" + [Guid]::NewGuid().ToString()
-                        New-Item -Path $tempUnpack -ItemType Directory | Out-Null
-
-                        Add-Type -Assembly "System.IO.Compression.FileSystem"
-                        [IO.Compression.ZipFile]::ExtractToDirectory($zip, $tempUnpack)
-                        Remove-Item $zip -Force
-
-                        # Get hashes of new files
-                        $newFiles = Get-ChildItem -Path $tempUnpack -Recurse -File
-                        $updates = @{}
-                        foreach ($file in $newFiles) {
-                            $rel = $file.FullName.Substring($tempUnpack.Length).TrimStart('\')
-                            $hash = Get-FileHash -Path $file.FullName -Algorithm SHA256
-                            $updates[$rel] = @{ FullPath = $file.FullName; Hash = $hash.Hash }
-                        }
-
-                        # Get hashes of existing remote files
-                        $existing = @{}
-                        if (Test-Path $dest) {
-                            Get-ChildItem -Path $dest -Recurse -File | ForEach-Object {
-                                $rel = $_.FullName.Substring($dest.Length).TrimStart('\')
-                                $hash = Get-FileHash -Path $_.FullName -Algorithm SHA256
-                                $existing[$rel] = $hash.Hash
-                            }
-                        }
-
-                        # Update changed or missing files
-                        foreach ($relPath in $updates.Keys) {
-                            $file = $updates[$relPath]
-                            $shouldCopy = (-not $existing.ContainsKey($relPath)) -or ($file.Hash -ne $existing[$relPath])
-                            if ($shouldCopy) {
-                                $targetPath = $dest + "\" + $relPath
-                                $targetDir = Split-Path $targetPath
-                                if (-not (Test-Path $targetDir)) {
-                                    New-Item -Path $targetDir -ItemType Directory -Force | Out-Null
-                                }
-                                Copy-Item -Path $file.FullPath -Destination $targetPath -Force
-                            }
-                        }
-
-                        # Clean temp
-                        Remove-Item -Path $tempUnpack -Recurse -Force
-                    } -ArgumentList $remoteZip, $remoteTarget
+                else {
+                    return ""
                 }
+            }-ArgumentList $remoteTarget, $createListener, $naFlagXml, $cred
 
-                Remove-PSSession $session
-
-                $returnmessage = $transmitMessage + $createListenerResult
+            # Validate remote zip path
+            if (-not $remoteTarget.EndsWith("\")) {
+                $remoteTarget += "\"
             }
-            else {
-                $returnmessage = "Failed To Connect"
-            }
-    
-            return $returnmessage
-        } -ArgumentList $cred, $server, $remoteTarget, $zipPath, $localFolderName, $naFlagXml, $createListener, $localBlob
 
-        $huh = receive-job $jobs 
-        $script:sharedState.Value.dataTable["$inncode"] = @{
-            Status = "Pending"
-            Result = "Launched"
+            $remoteBlob = Invoke-Command -Session $session -ScriptBlock {
+                param($remoteTarget)
+                function Get-DirectoryBlobTree {
+                    param (
+                        [string]$rootDirectory
+                    )
+
+                    if (-not (Test-Path $rootDirectory)) {
+                        return $null
+                    }
+
+                    $result = @()
+
+                    # Recursively get all files in the directory
+                    $files = Get-ChildItem -Path $rootDirectory -Recurse -File
+
+                    foreach ($file in $files) {
+                        $relativePath = $file.FullName.Substring($rootDirectory.Length).TrimStart('\')
+                        $blobSha1 = Compute-BlobSHA1 -filePath $file.FullName
+
+                        $result += [PSCustomObject]@{
+                            RelativePath = $relativePath
+                            BlobSHA1     = $blobSha1
+                        }
+                    }
+
+                    return $result
+                }
+
+                function Compute-BlobSHA1 {
+                    param (
+                        [string]$filePath
+                    )
+
+                    if (Test-Path $filePath) {
+                        # Read the file content
+                        $fileContent = [System.IO.File]::ReadAllBytes($filePath)
+
+                        # Create the blob header
+                        $blobHeader = [System.Text.Encoding]::UTF8.GetBytes("blob $($fileContent.Length)`0")
+
+                        # Combine the header and the file content
+                        $blobData = New-Object byte[] ($blobHeader.Length + $fileContent.Length)
+                        [System.Buffer]::BlockCopy($blobHeader, 0, $blobData, 0, $blobHeader.Length)
+                        [System.Buffer]::BlockCopy($fileContent, 0, $blobData, $blobHeader.Length, $fileContent.Length)
+
+                        # Compute the SHA-1 hash
+                        $sha1 = [System.Security.Cryptography.SHA1]::Create()
+                        $hashBytes = $sha1.ComputeHash($blobData)
+                        $sha1Hash = [BitConverter]::ToString($hashBytes) -replace '-', ''
+                        $sha1Hash = $sha1Hash.ToLower()
+                        return $sha1Hash
+                    }
+                    else {
+                        return "0"
+                    }
+
+                }
+
+                # Call the function with your desired path
+                Get-DirectoryBlobTree -rootDirectory $remoteTarget
+            } -ArgumentList $remoteTarget
+
+
+            $transmit = $false
+            $transmitMessage = "File sync skipped. No files to update. "
+
+            if ($null -eq $remoteBlob) {
+                $transmitMessage = "File sync completed. "
+                $transmit = $true
+            }
+            elseif ($remoteBlob.Count -ge $localBlob.Count) {
+                foreach ($blob in $localBlob) {
+                    if ($blob.BlobSHA1 -ne ($remoteBlob | Where-object { $_.RelativePath -eq $blob.RelativePath }).BlobSHA1) {
+                        $transmitMessage = "File sync completed. "
+                        $transmit = $true
+                        break
+                    }
+                }
+            }
+
+            if ($transmit) {
+
+                $remoteZip = $remoteTarget + "$localFolderName.zip"
+
+                # Copy zip to remote
+                Copy-Item -Path $zipPath -Destination $remoteZip -ToSession $session -Force
+
+                # Unpack, compare, update
+                Invoke-Command -Session $session -ScriptBlock {
+                    param($zip, $dest)
+
+                    $tempUnpack = "$env:TEMP\temp_" + [Guid]::NewGuid().ToString()
+                    New-Item -Path $tempUnpack -ItemType Directory | Out-Null
+
+                    Add-Type -Assembly "System.IO.Compression.FileSystem"
+                    [IO.Compression.ZipFile]::ExtractToDirectory($zip, $tempUnpack)
+                    Remove-Item $zip -Force
+
+                    # Get hashes of new files
+                    $newFiles = Get-ChildItem -Path $tempUnpack -Recurse -File
+                    $updates = @{}
+                    foreach ($file in $newFiles) {
+                        $rel = $file.FullName.Substring($tempUnpack.Length).TrimStart('\')
+                        $hash = Get-FileHash -Path $file.FullName -Algorithm SHA256
+                        $updates[$rel] = @{ FullPath = $file.FullName; Hash = $hash.Hash }
+                    }
+
+                    # Get hashes of existing remote files
+                    $existing = @{}
+                    if (Test-Path $dest) {
+                        Get-ChildItem -Path $dest -Recurse -File | ForEach-Object {
+                            $rel = $_.FullName.Substring($dest.Length).TrimStart('\')
+                            $hash = Get-FileHash -Path $_.FullName -Algorithm SHA256
+                            $existing[$rel] = $hash.Hash
+                        }
+                    }
+
+                    # Update changed or missing files
+                    foreach ($relPath in $updates.Keys) {
+                        $file = $updates[$relPath]
+                        $shouldCopy = (-not $existing.ContainsKey($relPath)) -or ($file.Hash -ne $existing[$relPath])
+                        if ($shouldCopy) {
+                            $targetPath = $dest + "\" + $relPath
+                            $targetDir = Split-Path $targetPath
+                            if (-not (Test-Path $targetDir)) {
+                                New-Item -Path $targetDir -ItemType Directory -Force | Out-Null
+                            }
+                            Copy-Item -Path $file.FullPath -Destination $targetPath -Force
+                        }
+                    }
+
+                    # Clean temp
+                    Remove-Item -Path $tempUnpack -Recurse -Force
+                } -ArgumentList $remoteZip, $remoteTarget
+            }
+
+            Remove-PSSession $session
+
+            $returnmessage = $transmitMessage + $createListenerResult
         }
+        else {
+            $returnmessage = "Failed To Connect"
+        }
+    
+        return $returnmessage
+    } -ArgumentList $cred, $server, $remoteTarget, $zipPath, $localFolderName, $naFlagXml, $createListener, $localBlob
+
+    $huh = receive-job $jobs 
+    $script:sharedState.Value.dataTable["$inncode"] = @{
+        Status = "Pending"
+        Result = "Launched"
     }
 
 }
