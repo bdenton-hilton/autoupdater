@@ -496,10 +496,6 @@ foreach ($action in $uiResult.Actions) {
 
 }
 
-
-
-$Result = [System.Windows.MessageBox]::Show($MessageBody, $MessageTitle, $ButtonType, $MessageIcon)
-
 # $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
 $i = 0
 $dot = ""
@@ -556,4 +552,3 @@ foreach ($job in $jobs) {
 
 
 Remove-Item $zipPath -Force -ErrorAction Ignore
-
