@@ -1,7 +1,7 @@
 ﻿# Point to the module folder
 $basePath = Split-Path -Path (split-path -Path $PSCommandPath)
 $templateFilePath = "$basePath\Assets\OnQ Balancing Report Templates.xlsx"
-$modulePath = "$basePath\Modules\ImportExcel\7.8.10\ImportExcel.psd1"
+$modulePath = "$basePath\Modules\ImportExcel\ImportExcel.psd1"
 $savedirectory = "$basePath\OnQ Balancing Reports"
 
 Import-Module $modulePath
@@ -2895,3 +2895,4 @@ Write-host "Reports saved to $OutputFolderPath"-ForegroundColor White
 Write-Host "`n`n"
 Write-Host "Script Completed" -ForegroundColor White -BackgroundColor DarkGreen
 exit
+
