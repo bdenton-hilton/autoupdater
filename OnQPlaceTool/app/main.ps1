@@ -127,7 +127,7 @@ $ps.AddScript({
         Title="OnQ Placement Status Tracker" Height="600" Width="436"
         WindowStartupLocation="CenterScreen"
         Background="White" FontSize="16" FontFamily="Lato"
-        Topmost="True">
+        Topmost="False">
     <Grid Margin="10">
         <Grid.RowDefinitions>
             <RowDefinition Height="*" />
@@ -241,10 +241,6 @@ $ps.AddScript({
                 Write-DebugLine "JobPaused toggled: $($state.jobPaused)"
             })
 
-        $window.Add_Loaded({
-                $window.Topmost = $false
-            })
-
         $null = $window.ShowDialog()
         Write-DebugLine "Grid binding count: $($grid.Items.Count)"
 
@@ -302,7 +298,7 @@ foreach ($action in $uiResult.Actions) {
 
     $failedConnections = 0
     try {
-        $session = New-PSSession -ComputerName $server -Credential $cred 
+        $session = New-PSSession -ComputerName $server -Credential $cred -errorAction Stop
         $failedConnections = 0
         $connection = $true
     }
@@ -565,3 +561,4 @@ foreach ($job in $jobs) {
 
 
 Remove-Item $zipPath -Force -ErrorAction Ignore
+
