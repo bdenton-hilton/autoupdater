@@ -1,3 +1,87 @@
+#region - NA Flag XML
+$preNaFlagXml = @"
+<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <Triggers>
+    <EventTrigger>
+      <Enabled>true</Enabled>
+      <Subscription>&lt;QueryList&gt;&lt;Query Id="0" Path="Application"&gt;&lt;Select Path="Application"&gt;*[System[Provider[@Name='MSSQLSERVER'] and EventID=18265]]&lt;/Select&gt;&lt;/Query&gt;&lt;/QueryList&gt;</Subscription>
+    </EventTrigger>
+  </Triggers>
+  <Principals>
+    <Principal id="Author">
+      <RunLevel>HighestAvailable</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>true</StopIfGoingOnBatteries>
+    <AllowHardTerminate>true</AllowHardTerminate>
+    <StartWhenAvailable>false</StartWhenAvailable>
+    <RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>
+    <IdleSettings>
+      <StopOnIdleEnd>true</StopOnIdleEnd>
+      <RestartOnIdle>false</RestartOnIdle>
+    </IdleSettings>
+    <AllowStartOnDemand>true</AllowStartOnDemand>
+    <Enabled>true</Enabled>
+    <Hidden>false</Hidden>
+    <RunOnlyIfIdle>false</RunOnlyIfIdle>
+    <WakeToRun>false</WakeToRun>
+    <ExecutionTimeLimit>PT2H</ExecutionTimeLimit>
+    <Priority>7</Priority>
+  </Settings>
+  <Actions Context="Author">
+    <Exec>
+      <Command>C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe</Command>
+      <Arguments>-ExecutionPolicy Bypass -File "D:\PEP Migration\Scripts\Pre NA Launcher.ps1"</Arguments>
+    </Exec>
+  </Actions>
+</Task>
+"@
+
+$postNaFlagXml = @"
+<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <Triggers>
+    <EventTrigger>
+      <Enabled>true</Enabled>
+      <Subscription>&lt;QueryList&gt;&lt;Query Id="0" Path="Application"&gt;&lt;Select Path="Application"&gt;*[System[Provider[@Name='MSSQLSERVER'] and EventID=8957]]&lt;/Select&gt;&lt;/Query&gt;&lt;/QueryList&gt;</Subscription>
+    </EventTrigger>
+  </Triggers>
+  <Principals>
+    <Principal id="Author">
+      <RunLevel>HighestAvailable</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>true</StopIfGoingOnBatteries>
+    <AllowHardTerminate>true</AllowHardTerminate>
+    <StartWhenAvailable>false</StartWhenAvailable>
+    <RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>
+    <IdleSettings>
+      <StopOnIdleEnd>true</StopOnIdleEnd>
+      <RestartOnIdle>false</RestartOnIdle>
+    </IdleSettings>
+    <AllowStartOnDemand>true</AllowStartOnDemand>
+    <Enabled>true</Enabled>
+    <Hidden>false</Hidden>
+    <RunOnlyIfIdle>false</RunOnlyIfIdle>
+    <WakeToRun>false</WakeToRun>
+    <ExecutionTimeLimit>PT2H</ExecutionTimeLimit>
+    <Priority>7</Priority>
+  </Settings>
+  <Actions Context="Author">
+    <Exec>
+      <Command>C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe</Command>
+      <Arguments>-ExecutionPolicy Bypass -File "D:\PEP Migration\Scripts\Post NA Launcher.ps1"</Arguments>
+    </Exec>
+  </Actions>
+</Task>
+"@
+#endregion
+
 function Get-DirectoryBlobTree {
     param (
         [string]$rootDirectory
@@ -298,7 +382,7 @@ foreach ($action in $uiResult.Actions) {
 
     
     $jobs += Start-Job -Name "$inncode" -ScriptBlock {
-        param($cred, $server, $remoteTarget, $zipPath, $localFolderName, $naFlagXml, $createListener, $localBlob)
+        param($cred, $server, $remoteTarget, $zipPath, $localFolderName, $postNaFlagXml, $preNaFlagXml, $createListener, $localBlob)
 
         try {
             $session = New-PSSession -ComputerName $server -Credential $cred -errorAction Stop
@@ -310,30 +394,46 @@ foreach ($action in $uiResult.Actions) {
 
         if ($connection) {
             $createListenerResult = Invoke-Command -Session $session -ScriptBlock {
-                param($dest, $createListener, $naFlagXml, $cred)
+                param($dest, $createListener, $postNaFlagXml, $preNaFlagXml, $cred)
                 if (-not (Test-Path -Path $dest -PathType Container)) {
                     New-Item -ItemType Directory -Path $dest | Out-Null
                 }
                 if ($createListener) {
+
+                    $postMessage = "An error occured scheduling the Post-flag."
                     $taskName = "Post NA Migration Flag"
                     if (Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue) {
                         Unregister-ScheduledTask -TaskName $taskName -Confirm:$false
                     }
-                    $task = [xml]$naFlagXml
+                    $task = [xml]$postNaFlagXml
                     $registeredTask = Register-ScheduledTask -Xml $task.OuterXml -TaskName $taskName -User $cred.UserName -Password $cred.GetNetworkCredential().Password
                     $registeredTaskName = $registeredTask.TaskName
                     $registeredTaskState = $registeredTask.State
                     if ($registeredTaskState -eq 3) {
-                        return "Successfully Scheduled $registeredTaskName."
+                        $postMessage = "Successfully Scheduled $registeredTaskName."
                     }
-                    else {
-                        return "An error occured, the task may already be scheduled."
+
+                    $preMessage = "An error occured scheduling the Pre-flag. "
+                    $taskName = "Pre NA Migration Flag"
+                    if (Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue) {
+                        Unregister-ScheduledTask -TaskName $taskName -Confirm:$false
                     }
+                    $task = [xml]$preNaFlagXml
+                    $registeredTask = Register-ScheduledTask -Xml $task.OuterXml -TaskName $taskName -User $cred.UserName -Password $cred.GetNetworkCredential().Password
+                    $registeredTaskName = $registeredTask.TaskName
+                    $registeredTaskState = $registeredTask.State
+                    if ($registeredTaskState -eq 3) {
+                        $preMessage =  "Successfully Scheduled $registeredTaskName. "
+                    }
+
+                    $taskMessage = $preMessage + $postMessage
+                    return $taskMessage
+
                 }
                 else {
                     return ""
                 }
-            }-ArgumentList $remoteTarget, $createListener, $naFlagXml, $cred
+            }-ArgumentList $remoteTarget, $createListener, $postNaFlagXml, $cred
 
             # Validate remote zip path
             if (-not $remoteTarget.EndsWith("\")) {
@@ -490,9 +590,8 @@ foreach ($action in $uiResult.Actions) {
         }
     
         return $returnmessage
-    } -ArgumentList $cred, $server, $remoteTarget, $zipPath, $localFolderName, $naFlagXml, $createListener, $localBlob
+    } -ArgumentList $cred, $server, $remoteTarget, $zipPath, $localFolderName, $postNaFlagXml, $preNaFlagXml, $createListener, $localBlob
 
-    $huh = receive-job $jobs 
     $script:sharedState.Value.dataTable["$inncode"] = @{
         Status = "Pending"
         Result = "Launched"
