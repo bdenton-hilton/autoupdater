@@ -109,7 +109,6 @@ function Get-DirectoryBlobTree {
     return $result
 }
 
-
 # Shared state reference
 $sharedState = [ref]@{
     keepWindowOpen = $true
@@ -158,7 +157,6 @@ public class InnStatus : INotifyPropertyChanged {
     }
 }
 "@
-
 
 # Set up UI runspace
 $runspace = [runspacefactory]::CreateRunspace()
@@ -338,8 +336,11 @@ $null = $ps.BeginInvoke()
 # Setup
 $cred = $uiResult.AdmCred
 $localFolder = $uiResult.FolderToPlace
+$localFolder = $localFolder -replace '"',""
+$localFolder = Resolve-Path $localFolder
 $remoteRoot = $uiResult.TargetLocation
 $localFolderName = Split-Path $localFolder -Leaf
+
 
 $localBlob = Get-DirectoryBlobTree -rootDirectory $localFolder
 
