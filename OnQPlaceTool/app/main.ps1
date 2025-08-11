@@ -338,7 +338,6 @@ $null = $ps.BeginInvoke()
 # Setup
 $cred = $uiResult.AdmCred
 $localFolder = $uiResult.FolderToPlace
-$localFolder = $localFolder -replace '"', ""
 $remoteRoot = $uiResult.TargetLocation
 $localFolderName = Split-Path $localFolder -Leaf
 
