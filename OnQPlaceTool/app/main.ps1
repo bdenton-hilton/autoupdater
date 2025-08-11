@@ -274,8 +274,6 @@ Remove-Item $zipPath -Force -ErrorAction Ignore
 
 # Zip entire local folder
 Add-Type -Assembly "System.IO.Compression.FileSystem"
-$localFolder
-$zipPath
 [IO.Compression.ZipFile]::CreateFromDirectory($localFolder, $zipPath)
 
 start-sleep -Milliseconds 200
