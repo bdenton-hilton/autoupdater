@@ -411,6 +411,10 @@ foreach ($action in $uiResult.Actions) {
                 $transmitMessage = "File sync completed. "
                 $transmit = $true
             }
+            elseif ($remoteBlob.Count -le $localBlob.Count) {
+                $transmitMessage = "File sync completed. "
+                $transmit = $true
+            }
             elseif ($remoteBlob.Count -ge $localBlob.Count) {
                 foreach ($blob in $localBlob) {
                     if ($blob.BlobSHA1 -ne ($remoteBlob | Where-object { $_.RelativePath -eq $blob.RelativePath }).BlobSHA1) {
@@ -552,3 +556,4 @@ foreach ($job in $jobs) {
 
 
 Remove-Item $zipPath -Force -ErrorAction Ignore
+
