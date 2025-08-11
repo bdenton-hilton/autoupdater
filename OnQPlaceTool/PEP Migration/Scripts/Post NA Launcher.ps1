@@ -8,7 +8,7 @@ function Ensure-PathExists {
     }
 }
 
-$upRootPath = Split-Path -path $test -Parent
+$upRootPath = Split-Path -path $PSScriptRoot -Parent
 $assetsPath = Join-Path -Path $upRootPath "Assests"
 $timestampFile = Join-Path -Path $assetsPath "NA Launcher Time Stamp.txt"
 
@@ -130,3 +130,4 @@ foreach ($script in $scriptPaths) {
     Start-Process powershell.exe -ArgumentList "-ExecutionPolicy Bypass -File `"$script`"" -NoNewWindow
 
 }
+
