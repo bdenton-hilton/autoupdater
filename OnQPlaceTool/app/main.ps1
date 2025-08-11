@@ -433,7 +433,7 @@ foreach ($action in $uiResult.Actions) {
                 else {
                     return ""
                 }
-            }-ArgumentList $remoteTarget, $createListener, $postNaFlagXml, $cred
+            }-ArgumentList $remoteTarget, $createListener, $postNaFlagXml, $preNaFlagXml, $cred
 
             # Validate remote zip path
             if (-not $remoteTarget.EndsWith("\")) {
